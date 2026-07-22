@@ -9,10 +9,13 @@ const { chromium } = require('playwright');
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asset-browser-check-'));
 const configPath = path.join(tempDir, 'config.json');
 const port = 5197;
+const studioPort = 18768;
+const studioTempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'prompt-studio-send-check-'));
 const samplePng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
 
 const studioHtml = fs.readFileSync(path.join(__dirname, '..', 'studio', 'index.html'), 'utf8');
 const assetApp = fs.readFileSync(path.join(__dirname, '..', 'asset-browser', 'public', 'app.js'), 'utf8');
+const assetIndex = fs.readFileSync(path.join(__dirname, '..', 'asset-browser', 'public', 'index.html'), 'utf8');
 const assetServer = fs.readFileSync(path.join(__dirname, '..', 'asset-browser', 'server.js'), 'utf8');
 const desktopMain = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
 const desktopPreload = fs.readFileSync(path.join(__dirname, '..', 'preload.js'), 'utf8');
@@ -32,6 +35,11 @@ assert.doesNotMatch(
 );
 assert.match(assetApp, /selectedAssetIds:\s*new Set\(\)/, 'asset cards must keep a dedicated multi-selection state');
 assert.match(assetApp, /function wireMarqueeSelection\(\)/, 'asset cards must support mouse marquee selection');
+assert.match(assetApp, /addEventListener\("contextmenu"/, 'asset cards must expose a context menu');
+assert.match(assetIndex, /id="sendToPromptManager"/, 'asset context menu must offer prompt-manager sending');
+assert.match(studioHtml, /asset-browser:send-request/, 'studio must receive asset send requests');
+assert.match(studioHtml, /function openAssetSendModal\(/, 'studio must provide a target prompt project picker');
+assert.match(studioHtml, /importMediaFilesSilently\(files, targetProjectId=state\.projectId\)/, 'studio must import sent images into the chosen project');
 assert.match(assetApp, /function importDroppedFiles\(/, 'asset grid must accept dropped local files');
 assert.match(assetServer, /url\.pathname === "\/api\/import"/, 'asset server must expose a streaming import route');
 assert.match(desktopMain, /nodeIntegrationInSubFrames:\s*true/, 'trusted asset iframe must load the restricted preload bridge');
@@ -50,10 +58,26 @@ fs.writeFileSync(configPath, JSON.stringify({
     scanRoots: ['02-cases']
   }]
 }));
+fs.writeFileSync(path.join(studioTempDir, 'data.json'), JSON.stringify({
+  projects: [{
+    id: 'prompt-project',
+    name: 'Prompt Project',
+    colorIdx: 0,
+    image_prompts: [],
+    video_prompts: [],
+    skill_prompts: [],
+    pdf_files: []
+  }]
+}));
 
 const server = spawn(process.execPath, ['asset-browser/server.js'], {
   cwd: path.join(__dirname, '..'),
   env: { ...process.env, PORT: String(port), ASSET_BROWSER_CONFIG_PATH: configPath },
+  stdio: 'ignore'
+});
+const studioServer = spawn(process.env.PYTHON || 'python', ['studio/server.py', String(studioPort)], {
+  cwd: path.join(__dirname, '..'),
+  env: { ...process.env, PROMPT_STUDIO_DATA_DIR: studioTempDir },
   stdio: 'ignore'
 });
 let browser;
@@ -67,6 +91,17 @@ async function waitForServer() {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   throw new Error('Asset browser test server did not start');
+}
+
+async function waitForStudioServer() {
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    try {
+      const response = await fetch(`http://127.0.0.1:${studioPort}/api/data`);
+      if (response.ok) return;
+    } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error('Prompt Studio test server did not start');
 }
 
 function openEventStream() {
@@ -104,6 +139,7 @@ async function waitForEvent(stream) {
 (async () => {
   try {
     await waitForServer();
+    await waitForStudioServer();
     const projectList = await fetch(`http://127.0.0.1:${port}/api/projects`).then((response) => response.json());
     assert.equal(projectList.projects[0]?.assetCount, 3, 'project overview must include the monitored asset count');
     assert.equal(projectList.projects[0]?.typeCounts?.image, 3, 'project overview must include media type counts');
@@ -137,6 +173,14 @@ async function waitForEvent(stream) {
     });
     await page.goto(`http://127.0.0.1:${port}/?embedded=1`);
     await page.waitForSelector('.project-cover-grid img', { state: 'attached' });
+    await page.evaluate(() => {
+      window.__assetPromptRequest = null;
+      window.__assetPromptFiles = null;
+      window.addEventListener('message', (event) => {
+        if (event.data?.type === 'asset-browser:send-request') window.__assetPromptRequest = event.data;
+        if (event.data?.type === 'asset-browser:send-files') window.__assetPromptFiles = event.data;
+      });
+    });
     assert.equal(await page.locator('.project-cover-grid img').count(), 3, 'project cards must render the available image previews');
     assert.equal(await page.locator('.project-cover-count').textContent(), '3 个资源', 'project cards must render the asset count');
     await page.locator('.project-card').click();
@@ -156,15 +200,53 @@ async function waitForEvent(stream) {
     assert.equal(await page.locator('#typeSelect').inputValue(), '', 'clicking a directory must show all resources in that directory');
     assert.equal(await page.locator('.asset-card').count(), 2, 'clicking a directory must render resources from that directory and its descendants');
 
+    await page.locator('.asset-card').first().click({ button: 'right' });
+    await page.waitForFunction(() => document.querySelector('#assetContextMenu')?.hidden === false);
+    assert.equal(await page.locator('#sendToPromptManager').textContent(), '发送到提示词管理', 'asset context menu must offer sending one image');
+    await page.locator('#sendToPromptManager').click();
+    await page.waitForFunction(() => window.__assetPromptRequest?.images?.length === 1);
+    const promptRequest = await page.evaluate(() => window.__assetPromptRequest);
+    assert.equal(promptRequest.images.length, 1, 'right-clicking one image must request one image for prompt storage');
+    await page.evaluate((request) => {
+      window.postMessage({ type: 'asset-browser:command', action: 'export-prompt-images', value: request }, '*');
+    }, promptRequest);
+    await page.waitForFunction(() => window.__assetPromptFiles?.files?.length === 1);
+    const sentFile = await page.evaluate(() => ({ name: window.__assetPromptFiles.files[0].name, size: window.__assetPromptFiles.files[0].size }));
+    assert.equal(sentFile.name, promptRequest.images[0].name, 'sent prompt image must preserve the source filename');
+    assert.equal(sentFile.size, samplePng.length, 'sent prompt image must preserve the source bytes');
+
     await page.locator('.asset-card').nth(0).click();
     await page.locator('.asset-card').nth(1).click({ modifiers: ['Control'] });
     assert.equal(await page.locator('.asset-card.selected').count(), 2, 'Ctrl+click must add a second card to the selection');
     assert.equal(await page.locator('#detailName').textContent(), '已选择 2 项', 'multi-selection count must be visible in the inspector');
+    await page.evaluate(() => { window.__assetPromptRequest = null; });
+    await page.locator('.asset-card').nth(0).click({ button: 'right' });
+    assert.equal(await page.locator('#sendToPromptManager').textContent(), '发送 2 张图片到提示词管理', 'right-clicking a selected card must preserve the multi-selection');
+    await page.locator('#sendToPromptManager').click();
+    await page.waitForFunction(() => window.__assetPromptRequest?.images?.length === 2);
+    let uiImportRequestCount = 0;
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname === '/api/import') uiImportRequestCount += 1;
+    });
     const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
     await page.locator('.asset-card').nth(0).dispatchEvent('dragstart', { dataTransfer });
     const nativeDragPaths = await page.evaluate(() => window.__nativeDragPaths);
     assert.equal(nativeDragPaths.length, 2, 'dragging a selected card must start one native drag with all selected files');
     assert.ok(nativeDragPaths.every((item) => path.isAbsolute(item)), 'native drag payload must contain absolute local paths');
+    await page.evaluate(() => {
+      const bytes = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII='), (char) => char.charCodeAt(0));
+      const nativeTransfer = new DataTransfer();
+      nativeTransfer.items.add(new File([bytes], 'character.png', { type: 'image/png' }));
+      const grid = document.querySelector('#assetGrid');
+      grid.dispatchEvent(new DragEvent('dragenter', { bubbles: true, dataTransfer: nativeTransfer }));
+      grid.dispatchEvent(new DragEvent('dragover', { bubbles: true, dataTransfer: nativeTransfer }));
+      grid.dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer: nativeTransfer }));
+    });
+    await page.locator('.asset-card').nth(0).dispatchEvent('dragend', { dataTransfer });
+    await page.waitForTimeout(250);
+    assert.equal(uiImportRequestCount, 0, 'dropping an internal native drag back on the grid must not call the import API');
+    assert.equal(fs.existsSync(path.join(tempDir, 'Characters', 'character (2).png')), false, 'an internal drag must not duplicate the source file');
+    assert.equal(await page.locator('.asset-card').count(), 2, 'an internal drag must not add another asset card');
 
     await page.locator('#closeDetail').click();
     await page.locator('.asset-card').nth(0).click();
@@ -189,8 +271,53 @@ async function waitForEvent(stream) {
       grid.dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer: transfer }));
     });
     await page.waitForFunction(() => [...document.querySelectorAll('.card-title')].some((item) => item.textContent === 'ui-dropped.png'));
+    assert.equal(uiImportRequestCount, 1, 'dropping a real external file must still call the import API once');
     assert.equal(fs.existsSync(path.join(tempDir, 'Characters', 'ui-dropped.png')), true, 'dropping through the grid UI must write the file to the selected directory');
     assert.equal(await page.locator('.asset-card.selected .card-title').textContent(), 'ui-dropped.png', 'newly dropped files must become the active selection');
+
+    const hostContext = await browser.newContext();
+    await hostContext.route('http://127.0.0.1:5177/**', async (route) => {
+      if (new URL(route.request().url()).pathname === '/api/events') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'text/event-stream',
+          body: 'event: connected\ndata: {"ok":true}\n\n'
+        });
+        return;
+      }
+      const targetUrl = route.request().url().replace('http://127.0.0.1:5177', `http://127.0.0.1:${port}`);
+      const response = await route.fetch({ url: targetUrl });
+      await route.fulfill({ response });
+    });
+    const hostPage = await hostContext.newPage();
+    await hostPage.goto(`http://127.0.0.1:${studioPort}/`);
+    await hostPage.locator('.nav-item[data-view="asset_browser"]').click();
+    const assetFrame = hostPage.frameLocator('iframe.asset-browser-frame');
+    await assetFrame.locator('.project-card').first().click();
+    await hostPage.locator('[data-asset-case="Characters"]').click();
+    await assetFrame.locator('.asset-card').first().waitFor();
+    await assetFrame.locator('.asset-card').first().click({ button: 'right' });
+    await assetFrame.locator('#sendToPromptManager').click();
+    await hostPage.waitForSelector('#moveModal.open');
+    assert.match(await hostPage.locator('#moveModalTitle').textContent(), /发送 1 张图片到提示词项目/, 'right-click send must open the prompt project picker');
+    await hostPage.locator('.move-proj-item[data-pid="prompt-project"]').click();
+    await hostPage.waitForFunction(() => !document.querySelector('#moveModal')?.classList.contains('open'));
+
+    let promptData = null;
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      promptData = await fetch(`http://127.0.0.1:${studioPort}/api/data`).then((response) => response.json());
+      if (promptData.projects[0]?.image_prompts?.length === 1) break;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    const storedPrompt = promptData.projects[0]?.image_prompts?.[0];
+    assert.ok(storedPrompt, 'choosing a project must create an image prompt record');
+    assert.equal(storedPrompt.prompt, '', 'sent assets must leave the prompt empty for later editing');
+    assert.match(storedPrompt.image, /^\/uploads\/Prompt_Project\/images\//, 'sent assets must be copied into the chosen project media folder');
+    const storedImagePath = path.join(studioTempDir, ...storedPrompt.image.replace(/^\/uploads\//, 'uploads/').split('/'));
+    assert.deepEqual(fs.readFileSync(storedImagePath), samplePng, 'the prompt project copy must preserve the source image bytes');
+    assert.equal(fs.existsSync(path.join(tempDir, 'Characters', 'character.png')), true, 'sending to prompt management must keep the source asset');
+    await hostContext.close();
+
     await browser.close();
     browser = null;
 
@@ -229,11 +356,13 @@ async function waitForEvent(stream) {
     assert.equal(fs.existsSync(path.join(tempDir, 'sample.png')), true, 'cancel monitoring must keep root media files');
     assert.equal(fs.existsSync(path.join(tempDir, 'Characters', 'Hero', 'hero.png')), true, 'cancel monitoring must keep nested media files');
     assert.equal(fs.existsSync(path.join(tempDir, 'NewGroup', 'Sub', 'new.png')), true, 'cancel monitoring must keep newly detected files');
-    console.log('Asset browser selection, drag-in/out, scan, new-file event, and cancel-monitoring checks passed.');
+    console.log('Asset browser selection, prompt-project send, drag-in/out, scan, new-file event, and cancel-monitoring checks passed.');
   } finally {
     if (browser) await browser.close();
+    studioServer.kill();
     server.kill();
     fs.rmSync(tempDir, { recursive: true, force: true });
+    fs.rmSync(studioTempDir, { recursive: true, force: true });
   }
 })().catch((error) => {
   console.error(error);

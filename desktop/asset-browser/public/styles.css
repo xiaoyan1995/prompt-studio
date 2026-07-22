@@ -516,6 +516,37 @@ section h2 {
   font-size: 12px;
 }
 
+.asset-context-menu {
+  position: fixed;
+  z-index: 1200;
+  min-width: 220px;
+  padding: 5px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .22);
+}
+
+.asset-context-menu[hidden] {
+  display: none;
+}
+
+.asset-context-menu button {
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 10px;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  text-align: left;
+}
+
+.asset-context-menu button:hover {
+  color: var(--text);
+  background: var(--panel-2);
+}
+
 .inspector {
   border-left: 1px solid var(--line);
 }

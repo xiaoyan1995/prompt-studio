@@ -2009,7 +2009,7 @@
       <button class="modal-close" id="moveModalClose">✕</button>
     </div>
     <div style="padding:20px;display:grid;gap:12px">
-      <div class="field"><label>操作方式</label>
+      <div class="field" id="moveModeField"><label>操作方式</label>
         <select id="moveMode" style="width:100%"><option value="move">移动（从当前项目删除）</option><option value="copy">复制（保留在当前项目）</option></select>
       </div>
       <div class="move-proj-list" id="moveProjList"></div>
@@ -4191,6 +4191,17 @@
 
   window.addEventListener('message', async (event) => {
     if (event.origin !== 'http://127.0.0.1:5177') return;
+    if (event.data?.type === 'asset-browser:send-request') {
+      const images = Array.isArray(event.data.images)
+        ? event.data.images.filter(item => item && typeof item.name === 'string' && typeof item.downloadUrl === 'string')
+        : [];
+      if (images.length) openAssetSendModal({ requestId: String(event.data.requestId || ''), images });
+      return;
+    }
+    if (event.data?.type === 'asset-browser:send-files') {
+      await finishAssetSend(event.data);
+      return;
+    }
     if (event.data?.type === 'asset-browser:drag-out') {
       const paths = Array.isArray(event.data.paths)
         ? event.data.paths.filter(path => typeof path === 'string' && path.trim())
@@ -8213,11 +8224,11 @@
     }
   });
 
-  async function importMediaFilesSilently(files) {
-    const proj = getProject(state.projectId);
+  async function importMediaFilesSilently(files, targetProjectId=state.projectId) {
+    const proj = getProject(targetProjectId);
     if (!proj) return 0;
 
-    const images = files.filter(file => file.type.startsWith('image/'));
+    const images = files.filter(file => file.type.startsWith('image/') || /\.(?:jpe?g|png|gif|webp|bmp|tiff?|avif)$/i.test(file.name));
     const videos = files.filter(file => file.type.startsWith('video/'));
     const total = images.length + videos.length;
     if (!total) {
@@ -8226,7 +8237,7 @@
     }
 
     const projName = proj.name || 'default';
-    const folderId = state.folderFilter || undefined;
+    const folderId = targetProjectId === state.projectId ? (state.folderFilter || undefined) : undefined;
     toast(`⏳ 正在导入 ${total} 个文件…`);
     let count = 0;
 
@@ -8591,8 +8602,22 @@
   // ── Cross-project Move / Copy ───────────────────────────────────────
   // ══════════════════════════════════════════════════════════════════════
   let _moveItems = [];
+  let _assetSendRequest = null;
+  let _assetSendTargetProjectId = '';
+
+  function closeMoveModal() {
+    document.getElementById('moveModal').classList.remove('open');
+    document.getElementById('moveModal').style.display = 'none';
+    document.getElementById('moveModeField').style.display = '';
+    _assetSendRequest = null;
+    _assetSendTargetProjectId = '';
+  }
+
   function openMoveModal(mode, items) {
+    _assetSendRequest = null;
+    _assetSendTargetProjectId = '';
     _moveItems = items;
+    document.getElementById('moveModeField').style.display = '';
     document.getElementById('moveMode').value = mode;
     document.getElementById('moveModalTitle').textContent = mode === 'copy' ? t('复制到项目','Copy to Project') : t('移动到项目','Move to Project');
     const list = document.getElementById('moveProjList');
@@ -8610,10 +8635,54 @@
     document.getElementById('moveModal').style.display = '';
     document.getElementById('moveModal').classList.add('open');
   }
-  document.getElementById('moveModalClose').addEventListener('click', () => {
-    document.getElementById('moveModal').classList.remove('open');
-    document.getElementById('moveModal').style.display = 'none';
-  });
+  document.getElementById('moveModalClose').addEventListener('click', closeMoveModal);
+
+  function openAssetSendModal(request) {
+    if (!request.requestId || !request.images.length) return;
+    _assetSendRequest = request;
+    _assetSendTargetProjectId = '';
+    _moveItems = [];
+    document.getElementById('moveModeField').style.display = 'none';
+    document.getElementById('moveModalTitle').textContent = `发送 ${request.images.length} 张图片到提示词项目`;
+    const list = document.getElementById('moveProjList');
+    list.innerHTML = data.projects.length
+      ? data.projects.map(p => `<div class="move-proj-item" data-pid="${h(p.id)}">
+          <span>${GRADIENT_EMOJIS[p.colorIdx||0]}</span>
+          <span style="flex:1">${h(p.name)}</span>
+        </div>`).join('')
+      : `<div style="padding:16px;color:var(--subtle);text-align:center">请先在提示词管理中新建项目</div>`;
+    list.querySelectorAll('.move-proj-item').forEach(el => {
+      el.addEventListener('click', () => beginAssetSend(el.dataset.pid));
+    });
+    document.getElementById('moveModal').style.display = '';
+    document.getElementById('moveModal').classList.add('open');
+  }
+
+  function beginAssetSend(targetProjectId) {
+    if (!_assetSendRequest || !getProject(targetProjectId)) return;
+    _assetSendTargetProjectId = targetProjectId;
+    const list = document.getElementById('moveProjList');
+    list.innerHTML = `<div style="padding:18px;color:var(--subtle);text-align:center">正在读取并导入图片…</div>`;
+    sendAssetBrowserCommand('export-prompt-images', _assetSendRequest);
+  }
+
+  async function finishAssetSend(message) {
+    if (!_assetSendRequest || message.requestId !== _assetSendRequest.requestId || !_assetSendTargetProjectId) return;
+    const files = Array.isArray(message.files)
+      ? message.files.filter(file => file instanceof File && (file.type.startsWith('image/') || /\.(?:jpe?g|png|gif|webp|bmp|tiff?|avif)$/i.test(file.name)))
+      : [];
+    const failed = Array.isArray(message.failed) ? message.failed.length : 0;
+    if (!files.length) {
+      toast('❌ 图片读取失败', 4000);
+      closeMoveModal();
+      return;
+    }
+    const targetProjectId = _assetSendTargetProjectId;
+    const count = await importMediaFilesSilently(files, targetProjectId);
+    closeMoveModal();
+    if (failed) toast(`⚠️ 已发送 ${count} 张，${failed} 张读取失败`, 4000);
+  }
+
   async function execMove(targetProjId) {
     const mode = document.getElementById('moveMode').value;
     const srcProj = getProject(state.projectId);
@@ -8630,8 +8699,7 @@
       }
     }
     await saveData(data); renderPage(); renderSidebar();
-    document.getElementById('moveModal').classList.remove('open');
-    document.getElementById('moveModal').style.display = 'none';
+    closeMoveModal();
     toast(`✅ 已${mode === 'copy' ? '复制' : '移动'} ${_moveItems.length} 个项目`);
   }
 

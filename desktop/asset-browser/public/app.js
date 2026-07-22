@@ -6,6 +6,7 @@ const parentOrigin = (() => {
     return "*";
   }
 })();
+const INTERNAL_ASSET_DRAG_TYPE = "application/x-asset-browser-files";
 
 const state = {
   workspaceView: isEmbedded ? "overview" : "project",
@@ -62,11 +63,16 @@ const els = {
   detailName: document.querySelector("#detailName"),
   detailPreview: document.querySelector("#detailPreview"),
   detailBody: document.querySelector("#detailBody"),
-  closeDetail: document.querySelector("#closeDetail")
+  closeDetail: document.querySelector("#closeDetail"),
+  assetContextMenu: document.querySelector("#assetContextMenu"),
+  sendToPromptManager: document.querySelector("#sendToPromptManager")
 };
 let mediaObserver = null;
 const thumbnailQueue = [];
 let activeThumbnailLoads = 0;
+let internalAssetDragActive = false;
+let internalAssetDragReleaseTimer = null;
+let assetContextAssets = [];
 
 const userStatuses = ["可用", "局部可用", "参考可用", "暂存", "丢弃"];
 const categoryLabels = {
@@ -789,8 +795,16 @@ function renderAssetCard(asset) {
     event.preventDefault();
     selectAsset(asset, { toggle: event.ctrlKey || event.metaKey, range: event.shiftKey });
   });
+  card.addEventListener("contextmenu", (event) => openAssetContextMenu(event, asset));
   card.addEventListener("dragstart", (event) => startAssetDrag(event, asset, card));
-  card.addEventListener("dragend", () => card.classList.remove("dragging"));
+  card.addEventListener("dragend", () => {
+    card.classList.remove("dragging");
+    clearTimeout(internalAssetDragReleaseTimer);
+    internalAssetDragReleaseTimer = setTimeout(() => {
+      internalAssetDragActive = false;
+      internalAssetDragReleaseTimer = null;
+    }, 0);
+  });
   return card;
 }
 
@@ -955,6 +969,119 @@ function filesForAsset(asset) {
   return asset.isGroup ? (asset.groupAssets || []) : [asset];
 }
 
+function isImageAsset(asset) {
+  return asset && asset.kind !== "video" && asset.kind !== "audio";
+}
+
+function promptManagerImages(assets) {
+  const byUrl = new Map();
+  assets.flatMap(filesForAsset).filter(isImageAsset).forEach((asset) => {
+    if (!asset.downloadUrl || byUrl.has(asset.downloadUrl)) return;
+    byUrl.set(asset.downloadUrl, {
+      name: asset.name || "image.png",
+      downloadUrl: asset.downloadUrl
+    });
+  });
+  return [...byUrl.values()];
+}
+
+function closeAssetContextMenu() {
+  els.assetContextMenu.hidden = true;
+  assetContextAssets = [];
+}
+
+function openAssetContextMenu(event, asset) {
+  if (!isEmbedded) return;
+  const selected = state.selectedAssetIds.has(asset.id) ? selectedAssetsInView() : [asset];
+  if (!promptManagerImages(selected).length) return;
+  event.preventDefault();
+  if (!state.selectedAssetIds.has(asset.id)) selectAsset(asset);
+  assetContextAssets = selected;
+  const imageCount = promptManagerImages(selected).length;
+  els.sendToPromptManager.textContent = imageCount > 1
+    ? `发送 ${imageCount} 张图片到提示词管理`
+    : "发送到提示词管理";
+  els.assetContextMenu.hidden = false;
+  const left = Math.min(event.clientX, window.innerWidth - els.assetContextMenu.offsetWidth - 8);
+  const top = Math.min(event.clientY, window.innerHeight - els.assetContextMenu.offsetHeight - 8);
+  els.assetContextMenu.style.left = `${Math.max(8, left)}px`;
+  els.assetContextMenu.style.top = `${Math.max(8, top)}px`;
+}
+
+function wireAssetContextMenu() {
+  els.sendToPromptManager.addEventListener("click", () => {
+    const assets = assetContextAssets;
+    closeAssetContextMenu();
+    requestPromptProject(assets);
+  });
+  document.addEventListener("pointerdown", (event) => {
+    if (!els.assetContextMenu.hidden && !els.assetContextMenu.contains(event.target)) closeAssetContextMenu();
+  });
+  window.addEventListener("blur", closeAssetContextMenu);
+  window.addEventListener("resize", closeAssetContextMenu);
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeAssetContextMenu();
+  });
+}
+
+function requestPromptProject(assets) {
+  const images = promptManagerImages(assets);
+  if (!images.length) {
+    els.refreshStatus.textContent = "请选择图片后再发送";
+    return;
+  }
+  const requestId = crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+  window.parent.postMessage({
+    type: "asset-browser:send-request",
+    requestId,
+    images
+  }, parentOrigin);
+  els.refreshStatus.textContent = `已选择 ${images.length} 张图片，请选择提示词项目`;
+}
+
+function imageMimeType(filename) {
+  const ext = filename.split(".").pop()?.toLowerCase();
+  return {
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    png: "image/png",
+    webp: "image/webp",
+    gif: "image/gif"
+  }[ext] || "application/octet-stream";
+}
+
+async function exportPromptManagerImages(payload) {
+  const requestId = String(payload?.requestId || "");
+  const images = Array.isArray(payload?.images) ? payload.images : [];
+  if (!requestId || !images.length) return;
+
+  const files = [];
+  const failed = [];
+  els.refreshStatus.textContent = `正在准备 ${images.length} 张图片`;
+  for (const image of images) {
+    try {
+      const response = await fetch(image.downloadUrl);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const blob = await response.blob();
+      files.push(new File([blob], image.name || "image.png", {
+        type: blob.type || imageMimeType(image.name || ""),
+        lastModified: Date.now()
+      }));
+    } catch {
+      failed.push(image.name || "未知图片");
+    }
+  }
+  window.parent.postMessage({
+    type: "asset-browser:send-files",
+    requestId,
+    files,
+    failed
+  }, parentOrigin);
+  els.refreshStatus.textContent = failed.length
+    ? `已准备 ${files.length} 张，${failed.length} 张读取失败`
+    : `已准备 ${files.length} 张图片`;
+}
+
 function dragPathsForAssets(assets) {
   const paths = assets.flatMap(filesForAsset).map(absolutePath).filter(Boolean);
   return [...new Set(paths)];
@@ -974,9 +1101,12 @@ function startAssetDrag(event, asset, card) {
   }
 
   card.classList.add("dragging");
+  clearTimeout(internalAssetDragReleaseTimer);
+  internalAssetDragReleaseTimer = null;
+  internalAssetDragActive = true;
   event.dataTransfer.effectAllowed = "copy";
   event.dataTransfer.setData("text/plain", paths.join("\n"));
-  event.dataTransfer.setData("application/x-asset-browser-files", String(paths.length));
+  event.dataTransfer.setData(INTERNAL_ASSET_DRAG_TYPE, String(paths.length));
   if (paths.length === 1 && !asset.isGroup) {
     const downloadUrl = new URL(asset.downloadUrl, location.href).href;
     event.dataTransfer.setData("DownloadURL", `application/octet-stream:${asset.name}:${downloadUrl}`);
@@ -1168,6 +1298,11 @@ function hasExternalFiles(event) {
   return Array.from(event.dataTransfer?.types || []).includes("Files");
 }
 
+function isInternalAssetDrag(event) {
+  return internalAssetDragActive
+    || Array.from(event.dataTransfer?.types || []).includes(INTERNAL_ASSET_DRAG_TYPE);
+}
+
 async function importDroppedFiles(fileList) {
   if (state.workspaceView !== "project" || !state.selectedProject || !state.selectedCase) {
     els.refreshStatus.textContent = "请先进入一个资产目录";
@@ -1224,23 +1359,33 @@ function wireAssetDrop() {
     dragDepth = 0;
     els.assetGrid.classList.remove("drop-active");
   };
+  const ignoreInternalDrop = (event) => {
+    if (!isInternalAssetDrag(event)) return false;
+    event.preventDefault();
+    clearDropState();
+    return true;
+  };
   els.assetGrid.addEventListener("dragenter", (event) => {
+    if (ignoreInternalDrop(event)) return;
     if (!hasExternalFiles(event)) return;
     event.preventDefault();
     dragDepth += 1;
     els.assetGrid.classList.add("drop-active");
   });
   els.assetGrid.addEventListener("dragover", (event) => {
+    if (ignoreInternalDrop(event)) return;
     if (!hasExternalFiles(event)) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "copy";
   });
   els.assetGrid.addEventListener("dragleave", (event) => {
+    if (ignoreInternalDrop(event)) return;
     if (!hasExternalFiles(event)) return;
     dragDepth = Math.max(0, dragDepth - 1);
     if (!dragDepth) els.assetGrid.classList.remove("drop-active");
   });
   els.assetGrid.addEventListener("drop", (event) => {
+    if (ignoreInternalDrop(event)) return;
     if (!hasExternalFiles(event)) return;
     event.preventDefault();
     const files = event.dataTransfer.files;
@@ -1454,6 +1599,8 @@ window.addEventListener("message", async (event) => {
   } else if (action === "card-scale") {
     const scale = Math.max(0.5, Math.min(1.8, Number(value) || 1));
     document.documentElement.style.setProperty("--asset-card-width", `${Math.round(200 * scale)}px`);
+  } else if (action === "export-prompt-images") {
+    await exportPromptManagerImages(value);
   }
 });
 
@@ -1484,6 +1631,7 @@ function configureLiveEvents() {
 }
 
 wireFilters();
+wireAssetContextMenu();
 await loadConfig();
 await loadProjects();
 await loadCases();
