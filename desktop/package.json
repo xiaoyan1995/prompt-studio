@@ -2,6 +2,10 @@
   "name": "prompt-studio-desktop",
   "version": "1.2.2",
   "description": "Prompt Studio Desktop for Windows.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xiaoyan1995/prompt-studio.git"
+  },
   "main": "main.js",
   "private": true,
   "scripts": {

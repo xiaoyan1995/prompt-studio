@@ -36,7 +36,6 @@ jobs:
       - name: Build Electron (Windows)
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx electron-builder --win --publish never && node scripts/pack-win.js
         working-directory: desktop
 
