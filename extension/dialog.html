@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Prompt Studio Desktop</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --primary:#1b67da;--primary-soft:#eef4ff;--border:#e4e8ef;
+    --text:#1a2340;--subtle:#6b7a99;--surface:#fff;--bg:#f5f6f8;
+    --radius:10px;--shadow:0 4px 20px rgba(26,35,64,.1);
+  }
+  body{font-family:Inter,system-ui,sans-serif;font-size:13px;color:var(--text);background:var(--bg);height:100vh;display:flex;flex-direction:column;overflow:hidden}
+  .header{display:flex;align-items:center;gap:8px;padding:14px 16px;background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0}
+  .header h1{font-size:14px;font-weight:700;flex:1}
+  .chip{display:inline-flex;align-items:center;padding:3px 8px;border-radius:99px;font-size:11px;font-weight:700}
+  .chip-image{background:#eef4ff;color:#1b67da}
+  .chip-video{background:#fdf0ff;color:#9b27af}
+
+  .body{flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:12px}
+
+  .preview-box{border-radius:var(--radius);overflow:hidden;background:#f0f4fc;min-height:80px;max-height:200px;display:flex;align-items:center;justify-content:center;position:relative}
+  .preview-box img,.preview-box video{max-width:100%;max-height:200px;object-fit:contain;display:block}
+  .preview-url{font-size:11px;color:var(--subtle);padding:8px 10px;word-break:break-all;text-align:center}
+
+  .field{display:flex;flex-direction:column;gap:5px}
+  .field label{font-size:11px;font-weight:600;color:var(--subtle)}
+  .field input,.field select,.field textarea{
+    border:1px solid var(--border);border-radius:7px;padding:8px 10px;
+    font-size:13px;font-family:inherit;color:var(--text);outline:none;
+    background:var(--surface);transition:border-color .15s;
+  }
+  .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--primary)}
+  .field textarea{resize:vertical;min-height:100px;line-height:1.6}
+
+  .radio-row{display:flex;gap:8px;flex-wrap:wrap}
+  .radio-btn{flex:1;min-width:80px;padding:7px 10px;border:1px solid var(--border);border-radius:7px;background:var(--surface);cursor:pointer;text-align:center;font-size:12px;font-weight:600;color:var(--subtle);transition:all .15s;white-space:nowrap}
+  .radio-btn.active{border-color:var(--primary);background:var(--primary-soft);color:var(--primary)}
+
+  .mode-chip{padding:3px 11px;border-radius:99px;border:1px solid var(--border);background:var(--surface2);color:var(--subtle);font-size:11px;font-weight:600;cursor:pointer;transition:all .12s}
+  .mode-chip.on{border-color:var(--primary);background:var(--primary-soft);color:var(--primary)}
+  .toggle-row{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--bg);border-radius:8px;cursor:pointer}
+  .toggle-row>label:first-child{flex:1;font-weight:600;cursor:pointer}
+  .toggle{position:relative;width:36px;height:20px;flex-shrink:0}
+  .toggle input{opacity:0;width:0;height:0}
+  .toggle-slider{position:absolute;inset:0;background:#ccd6e8;border-radius:99px;transition:.2s}
+  .toggle-slider::before{content:'';position:absolute;width:16px;height:16px;left:2px;top:2px;background:#fff;border-radius:50%;transition:.2s}
+  .toggle input:checked+.toggle-slider{background:var(--primary)}
+  .toggle input:checked+.toggle-slider::before{transform:translateX(16px)}
+
+  .ai-config{display:none;flex-direction:column;gap:8px;padding:10px 12px;background:var(--primary-soft);border-radius:8px;border:1px solid #d0e3ff}
+  .ai-config.visible{display:flex}
+  .ai-config-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+
+  .footer{padding:12px 16px;border-top:1px solid var(--border);background:var(--surface);flex-shrink:0;display:flex;gap:8px}
+  .btn{padding:8px 16px;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;font-family:inherit}
+  .btn-primary{background:var(--primary);color:#fff;flex:1}
+  .btn-primary:hover{background:#1558c0}
+  .btn-primary:disabled{opacity:.5;cursor:not-allowed}
+  .btn-secondary{background:var(--bg);color:var(--subtle);border:1px solid var(--border)}
+  .btn-secondary:hover{background:var(--border)}
+
+  .new-proj-row{display:flex;gap:6px;margin-top:4px}
+  .new-proj-row input{flex:1}
+  .btn-sm{padding:6px 10px;border-radius:7px;border:none;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap}
+  .btn-create{background:var(--primary);color:#fff}
+  .btn-create:hover{background:#1558c0}
+  .btn-add{background:var(--bg);border:1px solid var(--border);color:var(--subtle)}
+  .btn-add:hover{background:var(--border)}
+  #newProjRow{display:none}
+
+  /* States */
+  .state{display:none;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:20px;text-align:center;flex:1}
+  .state.visible{display:flex}
+  .state-icon{font-size:36px}
+  .spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .state-msg{font-size:13px;color:var(--subtle);line-height:1.6}
+  .state-msg strong{color:var(--text)}
+  .progress-steps{display:flex;flex-direction:column;gap:6px;width:100%;max-width:280px}
+  .progress-step{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--subtle)}
+  .progress-step.done{color:#16a34a}.progress-step.active{color:var(--primary);font-weight:600}
+  .progress-step-icon{width:18px;text-align:center}
+  .result-box{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:12px;line-height:1.6;color:var(--text);max-height:120px;overflow-y:auto;word-break:break-all}
+
+  /* Video candidate picker */
+  .vid-picker{display:flex;flex-direction:column;gap:4px;max-height:130px;overflow-y:auto}
+  .vid-candidate{display:flex;align-items:center;gap:8px;padding:6px 9px;border:1px solid var(--border);border-radius:7px;cursor:pointer;transition:all .12s;background:var(--surface)}
+  .vid-candidate:hover{border-color:var(--primary);background:var(--primary-soft)}
+  .vid-candidate.active{border-color:var(--primary);background:var(--primary-soft)}
+  .vid-candidate input[type=radio]{accent-color:var(--primary);flex-shrink:0}
+  .vid-cand-info{flex:1;min-width:0}
+  .vid-cand-name{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}
+  .vid-cand-meta{font-size:10px;color:var(--subtle);margin-top:1px}
+</style>
+</head>
+<body>
+<div class="header">
+  <span id="modeIcon">💾</span>
+  <h1 id="headerTitle" data-i18n="save_image_title">保存到 Prompt Studio</h1>
+  <span id="mediaChip" class="chip chip-image" data-i18n="chip_image">图片</span>
+</div>
+
+<!-- Main form -->
+<div class="body" id="formBody">
+  <!-- Media Preview (image/video mode) -->
+  <div class="preview-box" id="previewBox" style="display:none">
+    <div class="spinner"></div>
+  </div>
+
+  <!-- Text editor (skill/text mode) -->
+  <div class="field" id="skillTextWrap" style="display:none">
+    <label data-i18n="skill_content_label">提示词内容（可编辑）</label>
+    <textarea id="skillTextarea" rows="8" style="font-family:'Consolas',monospace;font-size:12px;line-height:1.7;resize:vertical"></textarea>
+  </div>
+
+  <!-- Video source picker (shown when multiple candidates detected) -->
+  <div class="field" id="vidPickerWrap" style="display:none">
+    <label data-i18n="vid_source_label">� 检测到多个视频，请选择正确的来源</label>
+    <div class="vid-picker" id="vidPicker"></div>
+  </div>
+
+  <!-- Aspect + Project on same row -->
+  <div style="display:grid;grid-template-columns:1fr 1.6fr;gap:10px;align-items:start">
+    <!-- Aspect ratio (auto-detected) -->
+    <div class="field" id="aspectWrap" style="display:none">
+      <label data-i18n="aspect_label">尺寸 / 宽高比</label>
+      <div style="display:flex;gap:5px;align-items:center">
+        <input type="text" id="aspectInput" data-i18n-placeholder="aspect_placeholder" placeholder="检测中…" style="flex:1;min-width:0" readonly>
+        <span id="aspectDims" style="font-size:10px;color:var(--subtle);white-space:nowrap"></span>
+      </div>
+    </div>
+    <!-- Project selector -->
+    <div class="field" id="projField">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+        <label style="margin:0" data-i18n="save_to_proj">保存到项目</label>
+        <button class="btn-sm btn-add" id="addProjBtn" data-i18n="add_proj">+ 新建</button>
+      </div>
+      <select id="projectSel"><option value="" data-i18n="loading_projs">⏳ 加载项目列表…</option></select>
+      <div class="new-proj-row" id="newProjRow">
+        <input type="text" id="newProjName" data-i18n-placeholder="proj_name_placeholder" placeholder="项目名称…">
+        <button class="btn-sm btn-create" id="createProjBtn" data-i18n="create_btn">创建</button>
+        <button class="btn-sm btn-add" id="cancelProjBtn" data-i18n="cancel_btn">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Category -->
+  <div class="field">
+    <label data-i18n="cat_label">分类</label>
+    <div class="radio-row" id="categoryRow">
+      <div class="radio-btn active" data-cat="image_prompts" data-i18n="cat_image">🖼️ 图片提示词</div>
+      <div class="radio-btn" data-cat="video_prompts" data-i18n="cat_video">� 视频提示词</div>
+      <div class="radio-btn" data-cat="skill_prompts" data-i18n="cat_skill">🤖 Skills</div>
+    </div>
+  </div>
+
+  <!-- Title (optional) -->
+  <div class="field">
+    <label data-i18n="title_label">标题（选填）</label>
+    <div style="display:flex;gap:6px;align-items:center">
+      <input type="text" id="titleInput" data-i18n-placeholder="title_placeholder" placeholder="留空自动生成" style="flex:1">
+      <button id="genTitleBtn" title="AI 生成标题" data-i18n="gen_title_btn" style="flex-shrink:0;padding:0 8px;height:32px;border:1px solid var(--border);border-radius:7px;background:var(--surface2);color:var(--primary);font-size:12px;cursor:pointer;white-space:nowrap">✨ 生成</button>
+    </div>
+  </div>
+
+  <!-- Manual prompt input (shown when reverse is off) -->
+  <div class="field" id="promptInputWrap">
+    <label data-i18n="prompt_label">提示词（选填）</label>
+    <textarea id="promptInput" data-i18n-placeholder="prompt_placeholder" placeholder="不反推时可在此手动输入提示词…" style="min-height:80px;font-family:'Consolas',monospace;font-size:12px"></textarea>
+  </div>
+
+  <!-- Reverse prompt toggle -->
+  <div class="toggle-row" id="reverseToggleRow">
+    <label for="reverseToggle" data-i18n="reverse_toggle">✨ 同时用 AI 反推提示词</label>
+    <label class="toggle">
+      <input type="checkbox" id="reverseToggle">
+      <span class="toggle-slider"></span>
+    </label>
+  </div>
+
+  <!-- Reverse mode selector (shown when reverse is on) -->
+  <div id="reverseModeRow" style="display:none;gap:5px;flex-wrap:wrap;padding:2px 0 6px">
+    <span style="font-size:11px;font-weight:600;color:var(--subtle);align-self:center" data-i18n="mode_label">模式：</span>
+    <button class="mode-chip on" data-mode="auto" data-i18n="mode_auto">全面</button>
+    <button class="mode-chip" data-mode="outfit" data-i18n="mode_outfit">服装</button>
+    <button class="mode-chip" data-mode="char" data-i18n="mode_char">人物</button>
+    <button class="mode-chip" data-mode="scene" data-i18n="mode_scene">场景</button>
+    <button class="mode-chip" data-mode="style" data-i18n="mode_style">画风</button>
+    <button class="mode-chip" data-mode="cam" data-i18n="mode_cam">运镜</button>
+  </div>
+
+  <!-- AI config (shown when reverse is on) -->
+  <div class="ai-config" id="aiConfig">
+    <div style="font-size:11px;font-weight:700;color:var(--primary)" data-i18n="ai_config_title">AI 配置（来自设置）</div>
+    <div class="ai-config-row">
+      <div class="field"><label data-i18n="model_label">模型</label><input type="text" id="cfgModel" readonly></div>
+      <div class="field"><label data-i18n="api_base_label">API 地址</label><input type="text" id="cfgBase" readonly></div>
+    </div>
+    <div style="font-size:11px;color:var(--subtle)"><span data-i18n="api_key_hint">API Key 已保存在插件设置中 · </span><span id="goSettings" data-i18n="modify_settings" style="color:var(--primary);cursor:pointer;text-decoration:underline">修改设置</span></div>
+  </div>
+</div>
+
+<!-- ffmpeg install state -->
+<div class="state" id="ffmpegState">
+  <div class="state-icon">🔧</div>
+  <div class="state-msg">
+    <strong data-i18n="ffmpeg_needed">需要安装 ffmpeg 才能下载视频</strong><br>
+    <span style="font-size:12px" data-i18n="ffmpeg_sub">一次性下载，约 80 MB，保存在本地</span>
+  </div>
+  <div style="width:100%;max-width:280px">
+    <div style="background:var(--border);border-radius:99px;height:6px;overflow:hidden;margin:10px 0">
+      <div id="ffmpegBar" style="height:100%;background:var(--primary);width:0%;transition:width .3s;border-radius:99px"></div>
+    </div>
+    <div id="ffmpegMsg" data-i18n="ffmpeg_start" style="font-size:12px;color:var(--subtle);text-align:center">点击按鈕开始安装</div>
+  </div>
+  <button class="btn btn-primary" id="installFfmpegBtn" data-i18n="install_ffmpeg" style="margin-top:4px;width:200px">⬇️ 安装 ffmpeg</button>
+  <button class="btn btn-secondary" id="skipFfmpegBtn" data-i18n="skip_ffmpeg" style="width:200px">跳过（仅保存 URL）</button>
+</div>
+
+<!-- Video download state -->
+<div class="state" id="downloadState">
+  <div class="spinner"></div>
+  <div class="state-msg"><strong data-i18n="downloading_video">正在下载视频…</strong><br><span style="font-size:12px" data-i18n="ffmpeg_merging">ffmpeg 合并中，请勿关闭窗口</span></div>
+</div>
+
+<!-- Loading state -->
+<div class="state" id="loadingState">
+  <div class="spinner"></div>
+  <div class="state-msg" id="loadingMsg"><strong data-i18n="processing">处理中…</strong></div>
+  <div class="progress-steps" id="progressSteps"></div>
+</div>
+
+<!-- Success state -->
+<div class="state" id="successState">
+  <div class="state-icon">✅</div>
+  <div class="state-msg" id="successMsg"></div>
+  <div class="result-box" id="resultBox" style="display:none"></div>
+</div>
+
+<!-- Error state -->
+<div class="state" id="errorState">
+  <div class="state-icon">❌</div>
+  <div class="state-msg" id="errorMsg"></div>
+</div>
+
+<div class="footer" id="footer">
+  <button class="btn btn-secondary" id="cancelBtn" data-i18n="cancel">取消</button>
+  <button class="btn btn-primary" id="actionBtn" data-i18n="save">💾 保存</button>
+</div>
+
+<script src="ext-i18n.js"></script>
+<script src="dialog.js"></script>
+</body>
+</html>

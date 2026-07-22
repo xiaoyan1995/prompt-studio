@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-CN" id="popupRoot">
+<head>
+<meta charset="UTF-8">
+<title>Prompt Studio Desktop</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{--primary:#1b67da;--primary-soft:#eef4ff;--border:#e4e8ef;--text:#1a2340;--subtle:#6b7a99;--bg:#f5f6f8}
+  body{font-family:Inter,system-ui,sans-serif;font-size:13px;color:var(--text);background:#fff;width:280px;padding:0;transition:width .2s}
+  body.collect-open{width:420px}
+  .header{padding:14px 16px 10px;border-bottom:1px solid var(--border)}
+  .header h1{font-size:14px;font-weight:800}
+  .header p{font-size:11px;color:var(--subtle);margin-top:2px}
+  .status-row{display:flex;align-items:center;gap:8px;padding:10px 16px;background:var(--bg);border-bottom:1px solid var(--border)}
+  .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+  .dot.ok{background:#16a34a}.dot.err{background:#dc2626}.dot.checking{background:#f59e0b}
+  .status-text{font-size:12px;color:var(--subtle);flex:1}
+  .section{padding:12px 16px;border-bottom:1px solid var(--border)}
+  .section-title{font-size:11px;font-weight:700;color:var(--subtle);margin-bottom:8px}
+  .btn{display:flex;align-items:center;gap:8px;width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:#fff;cursor:pointer;font-size:13px;font-family:inherit;color:var(--text);transition:all .12s;margin-bottom:6px}
+  .btn:last-child{margin-bottom:0}
+  .btn:hover{background:var(--primary-soft);border-color:var(--primary);color:var(--primary)}
+  .btn-icon{font-size:16px}
+  .btn-text{flex:1;text-align:left;font-weight:600}
+  .btn-sub{font-size:11px;color:var(--subtle);font-weight:400}
+  .ctag{padding:2px 7px;border:1.5px solid var(--border);border-radius:99px;font-size:10px;font-weight:700;color:var(--subtle);cursor:pointer;transition:all .1s;user-select:none}
+  .ctag:hover{border-color:#94a3b8}
+  .ctag.on{border-color:var(--primary);background:var(--primary-soft);color:var(--primary)}
+  .cspinner{display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:4px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .footer{padding:10px 16px;display:flex;justify-content:space-between;align-items:center}
+  .link{font-size:11px;color:var(--subtle);cursor:pointer;text-decoration:underline}
+  .link:hover{color:var(--primary)}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>🎨 Prompt Studio Desktop</h1>
+  <p data-i18n="header_sub">右键图片/视频使用完整功能</p>
+</div>
+
+<div class="status-row">
+  <div class="dot checking" id="statusDot"></div>
+  <span class="status-text" id="statusText" data-i18n="checking">正在检查服务器…</span>
+  <button id="insertToggleBtn" style="display:none;background:none;border:none;cursor:pointer;font-size:17px;padding:2px 4px;border-radius:5px;line-height:1;flex-shrink:0" data-i18n-title="insert_toggle_title" title="启用提示词快速插入">
+    <span id="insertToggleIcon">📋</span>
+  </button>
+  <button id="blockSiteBtn" style="display:none;background:none;border:none;cursor:pointer;font-size:17px;padding:2px 4px;border-radius:5px;line-height:1;flex-shrink:0" data-i18n-title="block_title" title="屏蔽此网站工具栏">
+    <span id="blockIcon">🚫</span>
+  </button>
+</div>
+
+<div class="section">
+  <div class="section-title" data-i18n="quick_actions">快捷操作</div>
+  <button class="btn" id="openStudioBtn">
+    <span class="btn-icon">🖥️</span>
+    <span class="btn-text" data-i18n="open_studio">打开桌面端</span>
+  </button>
+  <button class="btn" id="retryQueueBtn" style="display:none">
+    <span class="btn-icon">↻</span>
+    <span class="btn-text" data-i18n="retry_saves">重试失败保存</span>
+    <span class="btn-sub" id="retryQueueCount">0</span>
+  </button>
+  <div id="safetyStatus" style="display:none;font-size:11px;color:var(--subtle);line-height:1.5;padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:#fafbfd;margin-bottom:6px"></div>
+  <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:#fafbfd;margin-bottom:6px;cursor:pointer" id="skillShortcutTip" title="点击前往设置快捷键">
+    <span style="font-size:16px">🤖</span>
+    <span style="flex:1;font-size:13px;font-weight:600;color:var(--text)">保存选中文字为 Skill</span>
+    <span id="skillShortcutLabel" style="font-size:11px;color:var(--subtle)">设置快捷键 →</span>
+  </div>
+  <button class="btn" id="batchCollectBtn" style="margin-bottom:0">
+    <span class="btn-icon">🖼️</span>
+    <span class="btn-text" data-i18n="batch_collect">批量采集图片</span>
+    <span class="btn-sub" id="collectBtnSub" data-i18n="collect_sub">扫描 · 筛选 · 批量保存</span>
+    <span id="collectArrow" style="font-size:11px;color:var(--subtle);transition:transform .2s">▶</span>
+  </button>
+  <!-- Inline collect panel -->
+  <div id="collectPanel" style="display:none;margin-top:8px;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+    <!-- Filters -->
+    <div style="padding:8px 10px;background:var(--bg);border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:6px">
+      <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
+        <span style="font-size:10px;font-weight:700;color:var(--subtle);text-transform:uppercase;min-width:28px" data-i18n="fmt">格式</span>
+        <span class="ctag on" data-fmt="all" data-i18n="all">全部</span>
+        <span class="ctag" data-fmt="jpg">JPG</span>
+        <span class="ctag" data-fmt="png">PNG</span>
+        <span class="ctag" data-fmt="webp">WebP</span>
+        <span class="ctag" data-fmt="gif">GIF</span>
+        <span class="ctag" data-fmt="avif">AVIF</span>
+        <span class="ctag" data-fmt="other" data-i18n="other">其他</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
+        <span style="font-size:10px;font-weight:700;color:var(--subtle);text-transform:uppercase;min-width:28px" data-i18n="size">尺寸</span>
+        <span class="ctag" data-size="720">≥720P</span>
+        <span class="ctag" data-size="1080">≥1080P</span>
+        <span class="ctag" data-size="1440">≥2K</span>
+        <span class="ctag" data-size="2160">≥4K</span>
+        <input id="cMinW" type="number" data-i18n-placeholder="min_w" placeholder="最小宽" min="0" style="width:56px;padding:2px 5px;border:1px solid var(--border);border-radius:5px;font-size:11px;font-family:inherit">
+        <input id="cMinH" type="number" data-i18n-placeholder="min_h" placeholder="最小高" min="0" style="width:56px;padding:2px 5px;border:1px solid var(--border);border-radius:5px;font-size:11px;font-family:inherit">
+      </div>
+    </div>
+    <!-- Toolbar -->
+    <div style="padding:6px 10px;display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--border);background:#fff">
+      <button id="cSelAll" data-i18n="sel_all" style="padding:3px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;background:var(--bg);font-family:inherit">全选</button>
+      <button id="cSelNone" data-i18n="sel_none" style="padding:3px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;background:var(--bg);font-family:inherit">取消</button>
+      <select id="cProjSel" style="flex:1;padding:3px 6px;border:1px solid var(--border);border-radius:5px;font-size:11px;font-family:inherit;min-width:0"><option value="" data-i18n="loading_proj">⏳ 加载项目…</option></select>
+      <button id="cScanBtn" data-i18n="scan" style="padding:4px 10px;background:var(--primary);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">🔍 扫描</button>
+    </div>
+    <!-- Stats -->
+    <div id="cStats" style="padding:4px 10px;font-size:11px;color:var(--subtle);background:var(--bg);border-bottom:1px solid var(--border);display:none">
+      <span data-i18n="total_pre">共</span> <strong id="cTotal">0</strong> <span data-i18n="total_suf">张</span> · <span data-i18n="filtered_pre">筛选</span> <strong id="cFiltered">0</strong> <span data-i18n="filtered_suf">张</span> · <span data-i18n="selected_pre">已选</span> <strong id="cSelected" style="color:var(--primary)">0</strong> <span data-i18n="selected_suf">张</span>
+    </div>
+    <!-- Grid -->
+    <div id="cGridWrap" style="max-height:300px;overflow-y:auto;padding:8px;background:#fff">
+      <div id="cEmpty" data-i18n="scan_hint" style="text-align:center;padding:24px 10px;color:var(--subtle);font-size:12px">点击「扫描」获取页面图片</div>
+      <div id="cScanning" style="display:none;text-align:center;padding:24px;color:var(--subtle);font-size:12px"><span class="cspinner"></span> <span data-i18n="scanning">扫描中…</span></div>
+      <div id="cGrid" style="display:none;display:grid;grid-template-columns:repeat(3,1fr);gap:5px"></div>
+      <div id="cNoResult" data-i18n="no_result" style="display:none;text-align:center;padding:16px;color:var(--subtle);font-size:12px">当前筛选无结果</div>
+    </div>
+    <!-- Send footer -->
+    <div style="padding:8px 10px;border-top:1px solid var(--border);background:var(--bg);display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--subtle);cursor:pointer;white-space:nowrap" data-i18n-title="gallery_mode_tip" title="勾选：所有图片合并到一张卡片的画廊&#10;取消：每张图片单独创建一张卡片">
+        <input type="checkbox" id="cGalleryMode" checked style="margin:0;cursor:pointer">
+        <span data-i18n="gallery_mode">合并到同一卡片</span>
+      </label>
+      <button id="cSendBtn" disabled data-i18n="send_btn" style="padding:6px 16px;background:#16a34a;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;opacity:.4">💾 发送到 Prompt Studio</button>
+    </div>
+  </div>
+  <!-- Detected video section -->
+  <div id="videoDetectSection" style="display:none;margin-top:8px;border:1px solid #fed7aa;border-radius:8px;overflow:hidden;background:#fff7ed">
+    <div style="padding:6px 10px;background:#ffedd5;border-bottom:1px solid #fed7aa;display:flex;align-items:center;gap:6px">
+      <span style="font-size:13px">🎬</span>
+      <span style="font-size:11px;font-weight:700;color:#9a3412;flex:1" id="videoDetectLabel">检测到视频</span>
+      <span style="font-size:10px;color:#c2410c" id="videoDetectCount"></span>
+    </div>
+    <div id="videoDetectList" style="padding:6px 8px;display:flex;flex-direction:column;gap:4px;max-height:120px;overflow-y:auto"></div>
+  </div>
+  <button class="btn" id="openSettingsBtn">
+    <span class="btn-icon">⚙️</span>
+    <span class="btn-text" data-i18n="ext_settings">插件设置</span>
+    <span class="btn-sub" data-i18n="ext_settings_sub">连接 · 黑名单</span>
+  </button>
+</div>
+
+<div class="section">
+  <div class="section-title" data-i18n="how_to_use">使用方法</div>
+  <div style="font-size:12px;color:var(--subtle);line-height:1.7" data-i18n-html="usage_html">
+    在任意网页上 <strong style="color:var(--text)">右键点击图片或视频</strong>，选择：
+    <br>・💾 <strong style="color:var(--text)">保存到桌面端</strong>
+    <br>・✨ <strong style="color:var(--text)">反推提示词</strong> → AI 自动分析并生成
+  </div>
+</div>
+
+<div class="section" id="startSection" style="display:none">
+  <button class="btn" id="startServerBtn" style="background:var(--primary-soft);color:var(--primary);border-color:#d0e3ff;font-weight:700">
+    <span class="btn-icon">🚀</span>
+    <span class="btn-text" data-i18n="wake_studio">唤起桌面端</span>
+    <span class="btn-sub">Prompt Studio Desktop</span>
+  </button>
+</div>
+
+<div class="footer">
+  <span class="link" id="reloadBtn" data-i18n="refresh">刷新状态</span>
+  <div style="display:flex;align-items:center;gap:6px">
+    <button id="extLangBtnCN" style="padding:1px 6px;border:1px solid var(--border);border-radius:4px;font-size:10px;cursor:pointer;background:var(--primary);color:#fff;font-family:inherit">中</button>
+    <button id="extLangBtnEN" style="padding:1px 6px;border:1px solid var(--border);border-radius:4px;font-size:10px;cursor:pointer;background:none;color:var(--subtle);font-family:inherit">EN</button>
+    <span style="font-size:11px;color:var(--subtle)">v1.0.0</span>
+  </div>
+</div>
+
+<script src="popup.js"></script>
+</body>
+</html>

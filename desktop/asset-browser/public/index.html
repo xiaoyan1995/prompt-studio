@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>资产浏览器</title>
+  <script>
+    const pageParams = new URLSearchParams(location.search);
+    if (pageParams.has("embedded")) {
+      document.documentElement.classList.add("embedded");
+    }
+    document.documentElement.classList.toggle("theme-dark", pageParams.get("theme") === "dark");
+    const initialCardScale = Math.max(0.5, Math.min(1.8, Number(pageParams.get("cardScale")) || 1));
+    document.documentElement.style.setProperty("--asset-card-width", `${Math.round(200 * initialCardScale)}px`);
+  </script>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">S</div>
+      <div>
+        <h1>资产浏览器</h1>
+        <p>本地资产工作台</p>
+      </div>
+    </div>
+
+    <section>
+      <h2>项目文件夹</h2>
+      <div id="projectList" class="case-list project-folder-list"></div>
+      <button id="sidebarAddProjectButton" class="sidebar-add-button" type="button">添加项目</button>
+    </section>
+
+    <section>
+      <h2>案例</h2>
+      <div id="caseList" class="case-list case-folder-list"></div>
+    </section>
+
+    <section>
+      <h2>资产视图</h2>
+      <div class="filter-list" id="categoryFilters">
+        <button data-category="videoResult">视频结果</button>
+        <button data-category="generatedAsset">生成资产</button>
+        <button data-category="reference">输入参考</button>
+        <button data-category="reverse">视频反推/抽帧</button>
+        <button data-category="audio">音频资产</button>
+        <button data-category="" class="active">全部资产</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>状态筛选</h2>
+      <div class="filter-list" id="statusFilters">
+        <button data-status="" class="active">全部</button>
+        <button data-status="可用">可用</button>
+        <button data-status="局部可用">局部可用</button>
+        <button data-status="参考可用">参考可用</button>
+        <button data-status="暂存">暂存</button>
+        <button data-status="丢弃">丢弃</button>
+        <button data-status="待用户判断">待判断</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>类型筛选</h2>
+      <div class="filter-list" id="typeFilters">
+        <button data-type="" class="active">全部类型</button>
+        <button data-type="video">视频</button>
+        <button data-type="image">图片</button>
+        <button data-type="audio">音频</button>
+        <button data-type="contact">接触表</button>
+        <button data-type="frame">抽帧</button>
+      </div>
+    </section>
+
+    <div class="refresh-box">
+      <label><input id="workflowEnabled" type="checkbox" checked> 生产任务启用</label>
+      <label><input id="compactReverse" type="checkbox" checked> 反推精简显示</label>
+      <button id="refreshButton">刷新</button>
+      <p id="refreshStatus">等待加载</p>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-title">
+        <button id="backToProjectsButton" class="back-button" type="button" title="返回项目目录" hidden>←</button>
+        <div>
+        <h2 id="caseTitle">资产看板</h2>
+        <p id="assetCount">0 个资产</p>
+        </div>
+      </div>
+      <div class="toolbar">
+        <select id="caseSelect" class="asset-control" title="案例"></select>
+        <select id="categorySelect" class="asset-control" title="资产视图">
+          <option value="">全部资产</option>
+          <option value="videoResult">视频结果</option>
+          <option value="generatedAsset">生成资产</option>
+          <option value="reference">输入参考</option>
+          <option value="reverse">视频反推/抽帧</option>
+          <option value="audio">音频资产</option>
+        </select>
+        <select id="statusSelect" class="asset-control" title="状态">
+          <option value="">全部状态</option>
+          <option value="可用">可用</option>
+          <option value="局部可用">局部可用</option>
+          <option value="参考可用">参考可用</option>
+          <option value="暂存">暂存</option>
+          <option value="丢弃">丢弃</option>
+          <option value="待用户判断">待判断</option>
+        </select>
+        <select id="typeSelect" class="asset-control" title="类型">
+          <option value="">全部类型</option>
+          <option value="video">视频</option>
+          <option value="image">图片</option>
+          <option value="audio">音频</option>
+          <option value="contact">接触表</option>
+          <option value="frame">抽帧</option>
+        </select>
+        <input id="searchInput" type="search" placeholder="搜索资产...">
+        <select id="sortSelect">
+          <option value="newest">最新</option>
+          <option value="oldest">最早</option>
+          <option value="name">文件名</option>
+          <option value="size">大小</option>
+        </select>
+        <button id="topRefreshButton" class="toolbar-button asset-control" type="button">刷新</button>
+        <button id="openAddProjectButton" class="toolbar-button primary" type="button">添加项目</button>
+      </div>
+    </header>
+
+    <section id="projectOverview" class="project-overview"></section>
+    <section id="assetGrid" class="asset-grid"></section>
+  </main>
+
+  <aside class="inspector">
+    <div class="inspector-head">
+      <h2 id="detailName">未选择资产</h2>
+      <button id="closeDetail" title="清空选择">×</button>
+    </div>
+    <div id="detailPreview" class="detail-preview"></div>
+    <div id="detailBody" class="detail-body muted">选择一个资产查看详情</div>
+  </aside>
+
+  <div id="addProjectDialog" class="dialog-backdrop" hidden>
+    <section class="dialog-card" role="dialog" aria-modal="true" aria-labelledby="addProjectTitle">
+      <header>
+        <div>
+          <h2 id="addProjectTitle">添加监控目录</h2>
+          <p>添加后只在资产浏览器中使用，不会关联项目管理。</p>
+        </div>
+        <button id="closeAddProjectButton" class="dialog-close" type="button" aria-label="关闭">×</button>
+      </header>
+      <div class="dialog-body">
+        <label>目录名称<input id="projectNameInput" type="text" placeholder="例如：15秒微短剧系列"></label>
+        <label>本地项目文件夹</label>
+        <div class="project-path-row">
+          <input id="projectPathInput" type="text" placeholder="选择本地项目文件夹">
+          <button id="pickProjectFolderButton" type="button">选择</button>
+        </div>
+        <label>扫描子目录<input id="projectScanRootsInput" type="text" value="." placeholder="默认扫描所选目录；多个目录用逗号分隔"></label>
+      </div>
+      <footer>
+        <button id="cancelAddProjectButton" type="button">取消</button>
+        <button id="addProjectButton" class="primary" type="button">添加并监听</button>
+      </footer>
+    </section>
+  </div>
+
+  <script src="/app.js" type="module"></script>
+</body>
+</html>

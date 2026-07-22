@@ -1,0 +1,92 @@
+{
+  "name": "prompt-studio-desktop",
+  "version": "1.2.2",
+  "description": "Prompt Studio Desktop for Windows.",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "node scripts/start-electron.js",
+    "check:asset-browser": "node scripts/check-asset-browser.js",
+    "check:extension": "node scripts/check-extension-blocklist.js",
+    "build:win": "electron-builder --win && node scripts/pack-win.js",
+    "build": "npm run build:win",
+    "pack:source": "node scripts/pack-source.js"
+  },
+  "devDependencies": {
+    "@fontsource/noto-sans-sc": "^5.2.9",
+    "electron": "^37.2.6",
+    "electron-builder": "^26.0.12",
+    "playwright": "^1.60.0"
+  },
+  "build": {
+    "appId": "com.promptstudio.desktop",
+    "productName": "Prompt Studio Desktop",
+    "icon": "studio/prompt_studio_icon.ico",
+    "asar": true,
+    "files": [
+      "main.js",
+      "preload.js",
+      "scripts/**/*",
+      "studio/**/*",
+      "asset-browser/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "studio",
+        "to": "studio"
+      },
+      {
+        "from": "asset-browser",
+        "to": "asset-browser"
+      },
+      {
+        "from": "../extension",
+        "to": "extension"
+      },
+      {
+        "from": "../skills",
+        "to": "skills"
+      },
+      {
+        "from": "studio/prompt_studio_icon.ico",
+        "to": "prompt_studio_icon.ico"
+      },
+      {
+        "from": "studio/prompt_studio_icon.png",
+        "to": "prompt_studio_icon.png"
+      },
+      {
+        "from": "server-dist",
+        "to": "server",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "protocols": [
+      {
+        "name": "Prompt Studio Desktop",
+        "schemes": [
+          "promptstudio-desktop"
+        ]
+      }
+    ],
+    "win": {
+      "icon": "studio/prompt_studio_icon.ico",
+      "target": [
+        "nsis",
+        "zip"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Prompt Studio Desktop",
+      "installerIcon": "studio/prompt_studio_icon.ico",
+      "uninstallerIcon": "studio/prompt_studio_icon.ico"
+    }
+  }
+}

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>反推提示词</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --primary:#1b67da;--primary-soft:#eef4ff;--border:#e4e8ef;
+    --text:#1a2340;--subtle:#6b7a99;--bg:#f5f6f8;--radius:10px;
+    --success:#16a34a;--err:#dc2626
+  }
+  body{font-family:Inter,system-ui,sans-serif;font-size:13px;color:var(--text);background:#fff;
+       display:flex;flex-direction:column;height:100vh;overflow:hidden}
+
+  .header{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--border);flex-shrink:0}
+  .header h1{font-size:14px;font-weight:800;flex:1}
+  .chip{padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700}
+  .chip-image{background:#dbeafe;color:#1d4ed8}
+  .chip-video{background:#ede9fe;color:#6d28d9}
+
+  .body{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding:14px 16px}
+
+  /* Loading */
+  .loading-area{display:flex;flex-direction:column;align-items:center;justify-content:center;
+                gap:12px;flex:1;min-height:120px}
+  .spinner{width:28px;height:28px;border:3px solid #e0e7ff;border-top-color:var(--primary);
+           border-radius:50%;animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .loading-msg{font-size:12px;color:var(--subtle);text-align:center}
+
+  /* Result */
+  .result-area{display:none;flex-direction:column;gap:10px;flex:1}
+  .result-area.visible{display:flex}
+  .result-label{font-size:11px;font-weight:700;color:var(--subtle);text-transform:uppercase;letter-spacing:.05em}
+  .prompt-box{flex:1;min-height:140px;border:1px solid var(--border);border-radius:8px;
+              padding:10px 12px;font-size:13px;font-family:'Consolas',monospace;
+              line-height:1.7;resize:none;outline:none;color:var(--text);background:#fafbff}
+  .prompt-box:focus{border-color:var(--primary)}
+  .copy-row{display:flex;gap:8px;align-items:center}
+  .copied-hint{font-size:11px;color:var(--success);opacity:0;transition:opacity .3s}
+  .copied-hint.show{opacity:1}
+
+  /* Save expansion */
+  .save-expand{display:none;flex-direction:column;gap:10px;border-top:1px solid var(--border);
+               padding-top:12px;margin-top:2px}
+  .save-expand.visible{display:flex}
+  .field{display:flex;flex-direction:column;gap:5px}
+  .field label{font-size:12px;font-weight:600;color:var(--subtle)}
+  .field input,.field select{border:1px solid var(--border);border-radius:7px;padding:8px 10px;
+    font-size:13px;font-family:inherit;color:var(--text);outline:none;background:#fff;transition:border-color .15s}
+  .field input:focus,.field select:focus{border-color:var(--primary)}
+  .radio-row{display:flex;gap:6px;flex-wrap:wrap}
+  .radio-btn{flex:1;min-width:72px;padding:6px 8px;border:1px solid var(--border);border-radius:7px;
+    background:#fff;cursor:pointer;text-align:center;font-size:12px;font-weight:600;
+    color:var(--subtle);transition:all .15s;white-space:nowrap}
+  .radio-btn.active{border-color:var(--primary);background:var(--primary-soft);color:var(--primary)}
+
+  /* Error */
+  .error-area{display:none;flex-direction:column;align-items:center;gap:10px;
+              padding:16px;background:#fef2f2;border-radius:8px;text-align:center}
+  .error-area.visible{display:flex}
+  .error-msg{font-size:13px;color:var(--err);line-height:1.6}
+
+  .footer{display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--border);flex-shrink:0}
+  .btn{flex:1;padding:9px 14px;border-radius:8px;border:none;font-size:13px;
+       font-weight:600;cursor:pointer;transition:all .15s;font-family:inherit}
+  .btn-primary{background:var(--primary);color:#fff}
+  .btn-primary:hover{background:#1558c0}
+  .btn-primary:disabled{opacity:.5;cursor:default}
+  .btn-secondary{background:var(--bg);color:var(--subtle);border:1px solid var(--border)}
+  .btn-secondary:hover{background:var(--border)}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <span>✨</span>
+  <h1 data-i18n="result_title">反推提示词</h1>
+  <span id="mediaChip" class="chip chip-image" data-i18n="chip_image">图片</span>
+</div>
+
+<div class="body">
+  <!-- Loading -->
+  <div class="loading-area" id="loadingArea">
+    <div class="spinner"></div>
+    <div class="loading-msg" id="loadingMsg" data-i18n="loading_ai">正在连接 AI，请稍候…</div>
+  </div>
+
+  <!-- Error -->
+  <div class="error-area" id="errorArea">
+    <div class="error-msg" id="errorMsg"></div>
+    <button class="btn btn-secondary" style="flex:0;width:fit-content;padding:6px 16px" id="retryBtn" data-i18n="retry">重试</button>
+  </div>
+
+  <!-- Result -->
+  <div class="result-area" id="resultArea">
+    <div class="result-label" data-i18n="result_label">生成的提示词</div>
+    <textarea class="prompt-box" id="promptBox" spellcheck="false"></textarea>
+    <div class="copy-row">
+      <button class="btn btn-secondary" id="copyBtn" data-i18n="copy">📋 复制</button>
+      <span class="copied-hint" id="copiedHint" data-i18n="copied">✅ 已复制</span>
+      <button class="btn btn-secondary" id="saveToggleBtn" data-i18n="save_to_studio">💾 保存到 Prompt Studio Desktop…</button>
+    </div>
+
+    <!-- Inline save form -->
+    <div class="save-expand" id="saveExpand">
+      <div class="field">
+        <label data-i18n="save_proj_label">保存到项目</label>
+        <select id="projectSel"><option value="" data-i18n="loading_proj_short">⏳ 加载中…</option></select>
+      </div>
+      <div class="field">
+        <label data-i18n="cat_label">分类</label>
+        <div class="radio-row" id="categoryRow"></div>
+      </div>
+      <div class="field">
+        <label data-i18n="title_optional">标题（选填）</label>
+        <input type="text" id="titleInput" data-i18n-placeholder="title_placeholder_result" placeholder="留空自动生成">
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="footer">
+  <button class="btn btn-secondary" id="closeBtn" data-i18n="close_btn">关闭</button>
+  <button class="btn btn-primary" id="confirmSaveBtn" data-i18n="confirm_save" style="display:none">💾 确认保存</button>
+</div>
+
+<script src="ext-i18n.js"></script>
+<script src="result.js"></script>
+</body>
+</html>

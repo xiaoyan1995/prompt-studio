@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Prompt Studio Desktop Companion 设置</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{--primary:#1b67da;--primary-soft:#eef4ff;--border:#e4e8ef;--text:#1a2340;--subtle:#6b7a99;--bg:#f5f6f8;--ok:#16a34a;--err:#dc2626}
+  body{font-family:Inter,system-ui,sans-serif;font-size:13px;color:var(--text);background:var(--bg);min-height:100vh;padding:28px}
+  .card{background:#fff;border-radius:10px;border:1px solid var(--border);padding:24px 28px;max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+  h1{font-size:16px;font-weight:800;margin-bottom:4px}
+  .subtitle{font-size:12px;color:var(--subtle);line-height:1.6}
+  .section-title{font-size:11px;font-weight:700;color:var(--subtle);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px}
+  .divider{height:1px;background:var(--border)}
+  .field{display:flex;flex-direction:column;gap:5px}
+  .field label{font-size:12px;font-weight:600;color:var(--subtle)}
+  .field input,.field textarea{border:1px solid var(--border);border-radius:7px;padding:8px 10px;font-size:13px;font-family:inherit;color:var(--text);outline:none;background:#fff;transition:border-color .15s}
+  .field input:focus,.field textarea:focus{border-color:var(--primary)}
+  .hint{font-size:11px;color:var(--subtle);line-height:1.7}
+  .info{background:var(--primary-soft);border:1px solid #d0e3ff;border-radius:10px;padding:14px;display:grid;gap:8px}
+  .info strong{color:var(--primary)}
+  .btn-row{display:flex;gap:8px;align-items:center}
+  .btn{padding:9px 18px;border-radius:8px;border:none;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;font-family:inherit}
+  .btn-primary{background:var(--primary);color:#fff}
+  .btn-primary:hover{background:#1558c0}
+  .btn-secondary{background:var(--bg);color:var(--subtle);border:1px solid var(--border)}
+  .btn-secondary:hover{background:var(--border)}
+  .status{font-size:12px;margin-left:auto}
+  .status.ok{color:var(--ok)}.status.err{color:var(--err)}
+  code{background:#f0f4fc;padding:1px 4px;border-radius:3px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div>
+    <h1 data-i18n="settings_title">⚙️ Prompt Studio Desktop Companion 设置</h1>
+    <div class="subtitle" data-i18n="settings_subtitle">插件只负责网页采集和页面工具栏。AI Key、模型、反推指令、预设库全部以桌面端「设置」为准。</div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="info">
+    <div><strong data-i18n="whose_settings">按谁的？</strong></div>
+    <div class="hint" data-i18n="settings_hint_text">插件反推时会从 /api/desktop/settings 读取桌面端配置。这里不再保存 AI Key，避免两边配置冲突。</div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" id="openDesktopBtn" data-i18n="open_desktop">打开桌面端</button>
+      <button class="btn btn-secondary" id="testBtn" data-i18n="test_connection">测试连接</button>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div>
+    <div class="section-title" data-i18n="server_section">本地服务器</div>
+    <div class="field">
+      <label data-i18n="server_label">Prompt Studio Desktop 地址</label>
+      <input type="text" id="serverUrl" placeholder="http://127.0.0.1:8768">
+      <div class="hint" data-i18n="server_hint">默认端口 8768。只有你改了桌面端端口时才需要改这里。</div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div>
+    <div class="section-title" data-i18n="blacklist_section">站点黑名单</div>
+    <div class="field">
+      <label data-i18n="blacklist_label">不显示悬浮工具栏的网站（每行一个域名）</label>
+      <textarea id="domainBlacklist" rows="6" placeholder="例：&#10;mail.google.com&#10;github.com&#10;notion.so&#10;file://"></textarea>
+      <div class="hint" data-i18n="blacklist_hint_text">这是浏览器侧行为，所以保留在插件里。填写 twitter.com 会匹配它的子域名；填写 file:// 会屏蔽所有本地 HTML，或填写具体 file:// 地址只屏蔽单个本地文件。</div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div>
+    <div class="section-title" data-i18n="insert_whitelist_section">提示词快速插入</div>
+    <div class="field">
+      <label data-i18n="insert_whitelist_label">启用输入框插入图标的网站（每行一个域名）</label>
+      <textarea id="promptInsertWhitelist" rows="6" placeholder="例：&#10;chatgpt.com&#10;chat.deepseek.com&#10;lovart.ai"></textarea>
+      <div class="hint" data-i18n="insert_whitelist_hint">在这些网站上，点击输入框时会浮出一个小图标，点击可从你的资产库快速插入提示词。填写 lovart.ai 会匹配它的子域名。</div>
+    </div>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn btn-primary" id="saveBtn" data-i18n="save_settings">保存插件设置</button>
+    <span class="status" id="statusMsg"></span>
+  </div>
+</div>
+
+<script src="ext-i18n.js"></script>
+<script src="settings.js"></script>
+</body>
+</html>

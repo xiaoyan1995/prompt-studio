@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>批量采集 – Prompt Studio</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --primary:#2563eb;--primary-h:#1d4ed8;--primary-soft:#eff6ff;
+  --border:#e2e8f0;--text:#0f172a;--subtle:#64748b;
+  --surface:#ffffff;--bg:#f8fafc;--radius:10px;
+  --green:#16a34a;--red:#dc2626;--yellow:#d97706;
+}
+body{font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:13px;color:var(--text);background:var(--bg);height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+/* ─── Header ─── */
+.header{
+  display:flex;align-items:center;gap:12px;padding:12px 20px;
+  background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);
+  flex-shrink:0;border-bottom:1px solid #334155;
+}
+.header-brand{display:flex;align-items:center;gap:8px;flex:1}
+.header-logo{width:28px;height:28px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
+.header-title{font-size:15px;font-weight:800;color:#f8fafc;letter-spacing:-.01em}
+.header-sub{font-size:11px;color:#94a3b8;margin-top:1px}
+.stats-row{display:flex;gap:4px}
+.stat-pill{
+  display:flex;flex-direction:column;align-items:center;
+  padding:5px 14px;background:rgba(255,255,255,.06);border-radius:8px;
+  border:1px solid rgba(255,255,255,.08);min-width:56px;
+}
+.stat-n{font-size:18px;font-weight:800;color:#f8fafc;line-height:1;font-variant-numeric:tabular-nums}
+.stat-l{font-size:10px;color:#64748b;margin-top:2px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.stat-pill.highlight .stat-n{color:#60a5fa}
+.stat-pill.selected .stat-n{color:#34d399}
+.btn-scan{
+  padding:8px 18px;
+  background:linear-gradient(135deg,#3b82f6,#6366f1);
+  color:#fff;border:none;border-radius:8px;
+  font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;
+  white-space:nowrap;transition:opacity .15s;box-shadow:0 2px 8px rgba(99,102,241,.4);
+}
+.btn-scan:hover{opacity:.88}
+.btn-scan:disabled{opacity:.4;cursor:not-allowed;box-shadow:none}
+
+/* ─── Filters ─── */
+.filters{
+  background:var(--surface);border-bottom:1px solid var(--border);
+  padding:10px 20px;display:flex;flex-direction:column;gap:8px;flex-shrink:0;
+}
+.filter-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.filter-label{
+  font-size:10px;font-weight:700;color:var(--subtle);white-space:nowrap;
+  text-transform:uppercase;letter-spacing:.06em;min-width:30px;
+}
+.ftag{
+  padding:3px 10px;border:1.5px solid var(--border);border-radius:99px;
+  font-size:11px;font-weight:700;color:var(--subtle);cursor:pointer;
+  transition:all .12s;background:var(--surface);user-select:none;
+  line-height:1.6;
+}
+.ftag:hover{border-color:#94a3b8;color:var(--text)}
+.ftag.on{border-color:var(--primary);background:var(--primary-soft);color:var(--primary)}
+.divider{width:1px;height:20px;background:var(--border);flex-shrink:0;margin:0 2px}
+.filter-input-group{display:flex;align-items:center;gap:5px}
+.filter-input-group label{font-size:11px;color:var(--subtle);white-space:nowrap}
+.min-input{
+  width:60px;padding:3px 7px;border:1.5px solid var(--border);border-radius:6px;
+  font-size:12px;color:var(--text);outline:none;background:var(--surface);
+  font-family:inherit;transition:border-color .12s;
+}
+.min-input:focus{border-color:var(--primary)}
+.min-sel{
+  padding:3px 7px;border:1.5px solid var(--border);border-radius:6px;
+  font-size:11px;color:var(--text);background:var(--surface);font-family:inherit;
+  outline:none;cursor:pointer;
+}
+
+/* ─── Toolbar ─── */
+.toolbar{
+  display:flex;align-items:center;gap:8px;padding:8px 20px;
+  background:var(--bg);border-bottom:1px solid var(--border);flex-shrink:0;
+}
+.toolbar-left{display:flex;align-items:center;gap:6px;flex:1;min-width:0}
+.btn-ghost{
+  padding:5px 12px;border-radius:7px;border:1.5px solid var(--border);
+  background:var(--surface);color:var(--subtle);
+  font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;
+  transition:all .12s;white-space:nowrap;
+}
+.btn-ghost:hover{background:var(--border);color:var(--text)}
+.proj-sel{
+  padding:5px 10px;border:1.5px solid var(--border);border-radius:7px;
+  font-size:12px;color:var(--text);background:var(--surface);font-family:inherit;
+  outline:none;max-width:180px;transition:border-color .12s;
+}
+.proj-sel:focus{border-color:var(--primary)}
+.btn-send{
+  padding:7px 20px;
+  background:linear-gradient(135deg,#16a34a,#059669);
+  color:#fff;border:none;border-radius:8px;
+  font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;
+  transition:opacity .15s;box-shadow:0 2px 6px rgba(22,163,74,.35);
+  white-space:nowrap;
+}
+.btn-send:hover{opacity:.88}
+.btn-send:disabled{opacity:.4;cursor:not-allowed;box-shadow:none}
+
+/* ─── Grid ─── */
+.grid-wrap{flex:1;overflow-y:auto;padding:16px 20px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+
+.card{
+  border-radius:10px;overflow:hidden;background:var(--surface);
+  border:2px solid var(--border);cursor:pointer;
+  transition:border-color .12s,box-shadow .12s,transform .1s;
+  position:relative;user-select:none;
+}
+.card:hover{border-color:#94a3b8;box-shadow:0 2px 12px rgba(0,0,0,.08);transform:translateY(-1px)}
+.card.selected{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary),0 2px 12px rgba(37,99,235,.18)}
+.card.filtered{opacity:.2;pointer-events:none;filter:grayscale(1)}
+
+.thumb-wrap{position:relative;padding-bottom:100%;overflow:hidden;background:#e2e8f0}
+.thumb-wrap img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:transform .2s}
+.card:hover .thumb-wrap img{transform:scale(1.04)}
+.thumb-placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:28px}
+
+.card-check{
+  position:absolute;top:7px;left:7px;
+  width:22px;height:22px;border-radius:6px;
+  background:rgba(15,23,42,.5);border:2px solid rgba(255,255,255,.6);
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;color:#fff;transition:all .12s;backdrop-filter:blur(4px);
+}
+.card.selected .card-check{background:var(--primary);border-color:var(--primary)}
+
+.card-dims{
+  position:absolute;bottom:5px;right:6px;
+  font-size:10px;font-weight:700;color:#fff;
+  text-shadow:0 1px 4px rgba(0,0,0,.8);line-height:1;letter-spacing:.02em;
+}
+.card-fmt{
+  position:absolute;top:7px;right:7px;
+  padding:2px 6px;border-radius:4px;font-size:9px;font-weight:800;
+  color:#fff;letter-spacing:.06em;text-transform:uppercase;
+  background:rgba(15,23,42,.55);backdrop-filter:blur(4px);
+}
+
+.card-info{
+  padding:7px 9px;font-size:11px;color:var(--subtle);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  border-top:1px solid var(--border);background:var(--surface);
+}
+
+/* ─── Empty / States ─── */
+.empty{
+  flex:1;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:14px;color:var(--subtle);text-align:center;padding:48px;
+}
+.empty-icon{font-size:48px;opacity:.6}
+.empty-title{font-size:15px;font-weight:700;color:var(--text)}
+.empty-sub{font-size:13px;line-height:1.6;max-width:300px}
+.scanning{display:flex;flex-direction:column;align-items:center;gap:12px;padding:48px}
+.spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ─── Toast ─── */
+.toast{
+  position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(12px);
+  background:#0f172a;color:#f8fafc;padding:9px 20px;border-radius:99px;
+  font-size:13px;font-weight:600;opacity:0;pointer-events:none;
+  transition:opacity .2s,transform .2s;z-index:999;white-space:nowrap;
+  box-shadow:0 4px 16px rgba(0,0,0,.25);
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.success{background:#166534;color:#dcfce7}
+.toast.error{background:#991b1b;color:#fee2e2}
+
+/* ─── Progress overlay ─── */
+.prog-overlay{
+  position:fixed;inset:0;background:rgba(15,23,42,.55);
+  display:none;align-items:center;justify-content:center;z-index:200;
+  backdrop-filter:blur(3px);
+}
+.prog-overlay.show{display:flex}
+.prog-box{
+  background:var(--surface);border-radius:16px;padding:28px 36px;
+  min-width:300px;text-align:center;display:flex;flex-direction:column;gap:14px;
+  box-shadow:0 8px 32px rgba(0,0,0,.2);
+}
+.prog-title{font-size:15px;font-weight:800}
+.prog-bar-bg{background:#e2e8f0;border-radius:99px;height:8px;overflow:hidden}
+.prog-bar{height:100%;background:linear-gradient(90deg,#3b82f6,#6366f1);border-radius:99px;transition:width .25s}
+.prog-msg{font-size:12px;color:var(--subtle)}
+.prog-counts{display:flex;justify-content:center;gap:20px}
+.prog-count{text-align:center}
+.prog-count-n{font-size:20px;font-weight:800;color:var(--text)}
+.prog-count-l{font-size:10px;color:var(--subtle);text-transform:uppercase;letter-spacing:.05em}
+.prog-count-n.ok{color:var(--green)}
+.prog-count-n.fail{color:var(--red)}
+.btn-prog-close{padding:8px 24px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;display:none}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-brand">
+    <div class="header-logo">🖼</div>
+    <div>
+      <div class="header-title">批量图片采集</div>
+      <div class="header-sub">Prompt Studio Desktop</div>
+    </div>
+  </div>
+  <div class="stats-row">
+    <div class="stat-pill"><div class="stat-n" id="statTotal">0</div><div class="stat-l">总计</div></div>
+    <div class="stat-pill highlight"><div class="stat-n" id="statFiltered">0</div><div class="stat-l">筛选</div></div>
+    <div class="stat-pill selected"><div class="stat-n" id="statSelected">0</div><div class="stat-l">已选</div></div>
+  </div>
+  <button class="btn-scan" id="scanBtn">🔍 开始扫描</button>
+</div>
+
+<!-- Filters -->
+<div class="filters">
+  <div class="filter-row">
+    <span class="filter-label">格式</span>
+    <span class="ftag on" data-fmt="all">全部</span>
+    <span class="ftag" data-fmt="jpg">JPG</span>
+    <span class="ftag" data-fmt="png">PNG</span>
+    <span class="ftag" data-fmt="webp">WebP</span>
+    <span class="ftag" data-fmt="gif">GIF</span>
+    <span class="ftag" data-fmt="avif">AVIF</span>
+    <span class="ftag" data-fmt="svg">SVG</span>
+    <span class="ftag" data-fmt="other">其他</span>
+  </div>
+  <div class="filter-row">
+    <span class="filter-label">尺寸</span>
+    <span class="ftag" data-size="720">≥ 720P</span>
+    <span class="ftag" data-size="1080">≥ 1080P</span>
+    <span class="ftag" data-size="1440">≥ 2K</span>
+    <span class="ftag" data-size="2160">≥ 4K</span>
+    <div class="divider"></div>
+    <div class="filter-input-group">
+      <label>最小宽</label>
+      <input class="min-input" id="minW" type="number" placeholder="0" min="0">
+      <label>最小高</label>
+      <input class="min-input" id="minH" type="number" placeholder="0" min="0">
+    </div>
+    <div class="filter-input-group">
+      <label>最小像素</label>
+      <select class="min-sel" id="minPx">
+        <option value="0">不限</option>
+        <option value="65536">256²</option>
+        <option value="262144">512²</option>
+        <option value="1048576">1024²</option>
+        <option value="4194304">2048²</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<!-- Toolbar -->
+<div class="toolbar">
+  <div class="toolbar-left">
+    <button class="btn-ghost" id="selAllBtn">全选</button>
+    <button class="btn-ghost" id="selNoneBtn">取消全选</button>
+    <div class="divider"></div>
+    <select class="proj-sel" id="projSel"><option value="">⏳ 加载项目…</option></select>
+  </div>
+  <button class="btn-send" id="sendBtn" disabled>💾 发送到 Prompt Studio</button>
+</div>
+
+<!-- Grid area -->
+<div class="grid-wrap" id="gridWrap">
+  <div class="empty" id="emptyState">
+    <div class="empty-icon">🔍</div>
+    <div class="empty-title">扫描当前页面的图片</div>
+    <div class="empty-sub">点击「开始扫描」，自动获取页面全部图片，支持按格式和尺寸筛选后批量保存</div>
+  </div>
+  <div class="scanning" id="scanningState" style="display:none">
+    <div class="spinner"></div>
+    <div style="font-size:13px;color:var(--subtle)">正在扫描页面图片…</div>
+  </div>
+  <div class="grid" id="grid" style="display:none"></div>
+  <div class="empty" id="noResultState" style="display:none">
+    <div class="empty-icon">🙈</div>
+    <div class="empty-title">当前筛选条件下无图片</div>
+    <div class="empty-sub">尝试放宽格式或尺寸限制</div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Progress overlay -->
+<div class="prog-overlay" id="progOverlay">
+  <div class="prog-box">
+    <div class="prog-title" id="progTitle">正在发送…</div>
+    <div class="prog-counts">
+      <div class="prog-count"><div class="prog-count-n ok" id="progOk">0</div><div class="prog-count-l">成功</div></div>
+      <div class="prog-count"><div class="prog-count-n fail" id="progFail">0</div><div class="prog-count-l">失败</div></div>
+      <div class="prog-count"><div class="prog-count-n" id="progTotal">0</div><div class="prog-count-l">总计</div></div>
+    </div>
+    <div class="prog-bar-bg"><div class="prog-bar" id="progBar" style="width:0%"></div></div>
+    <div class="prog-msg" id="progMsg">准备中…</div>
+    <button class="btn-prog-close" id="progClose">完成</button>
+  </div>
+</div>
+
+<script src="collect.js"></script>
+</body>
+</html>

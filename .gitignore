@@ -1,0 +1,36 @@
+DESIGN.md
+desktop/DESIGN.md
+/prompt_studio_icon.ico
+/prompt_studio_icon.png
+studio-data/
+desktop/.context/
+__pycache__/
+*.pyc
+desktop/studio/data.json
+desktop/studio/studio-config.json
+extension.zip
+*.log
+.DS_Store
+Thumbs.db
+release/
+desktop/node_modules/
+desktop/.venv-build/
+desktop/dist/
+desktop/server-dist/*
+!desktop/server-dist/.gitkeep
+desktop/server-build/prompt-studio-server/
+ci-artifacts/
+
+desktop/build/
+
+# Runtime and Dependency Caches
+desktop/server-build/build/
+
+# Windows source repository: keep local macOS copies and all release artifacts out.
+mac/
+build-mac.command
+*.dmg
+*.app
+*.exe
+*.msi
+*.zip
